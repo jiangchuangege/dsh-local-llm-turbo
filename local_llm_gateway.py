@@ -10,7 +10,7 @@ local_llm_gateway.py  --  OpenAI 兼容模型 → DeepSeek Harness(DSH) 加速�
 
 注意: 工具调用是否可靠, 取决于模型本身。
   - 够大的/原生支持 tool_calls 的模型(如 云 Qwen3.6/3.7、Qwen2.5-Coder-32B、Qwen3) → 网关辅助/透明放行, 稳定;
-  - 弱小模型(如 7B+低量化) 扛不住 DSH 的 Agent 环境, 会退化或输出空, 网关救不了。
+  - 弱小/低量化模型 扛不住 DSH 的 Agent 环境, 会退化或输出空, 网关救不了。
 
 用法
 ----
