@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-local_llm_gateway.py  --  本地模型 DeepSeek Harness(DSH)加速网关
+local_llm_gateway.py  --  OpenAI 兼容模型 → DeepSeek Harness(DSH) 加速网关(模型无关)
 
-让 llama.cpp 服务的本地小模型(Qwen2.5-Coder 等)对接 DSH 时:
+让对接 DSH 的 OpenAI 兼容模型(本地 llama.cpp / vLLM / 云端 API)具备:
   1) 普通聊天 → 流式直通(边生成边返回, 感知速度大幅提升);
-  2) 工具调用 → 流式读上游 + 提前止损退化循环 + 改写为标准 tool_calls。
+  2) 工具调用 → JSON-Schema Grammar 约束强制输出合法 {name,arguments}, 并改写为标准 tool_calls;
+  3) 退化防护 → 工具预算、抗退化采样、提前止损、垃圾兜底。
 
-解决两个痛点:
-  - 小模型在大量工具 schema 下"退化刷屏"(重复 type/false/JSON 碎片) → 提前掐断, 不再生成垃圾;
-  - 单线程 llama-server 被一个长请求占死 → 串行队列, 不至于排队雪崩。
+注意: 工具调用是否可靠, 取决于模型本身。
+  - 够大的/原生支持 tool_calls 的模型(如 云 Qwen3.6/3.7、Qwen2.5-Coder-32B、Qwen3) → 网关辅助/透明放行, 稳定;
+  - 弱小模型(如 7B+低量化) 扛不住 DSH 的 Agent 环境, 会退化或输出空, 网关救不了。
 
 用法
 ----
