@@ -115,6 +115,35 @@ def trim_tools(tools, max_tools):
     return out
 
 
+def build_tool_schema(tools):
+    """构造 JSON-Schema, 强制模型只输出合法的 {name, arguments} 工具调用。
+
+    用 oneOf 让每个工具的 arguments 匹配各自的参数 schema,
+    这样小模型也能填对参数(如 {"city":"Paris"}), 彻底杜绝退化/乱格式/错参数。
+    """
+    if not isinstance(tools, list) or not tools:
+        return None
+    options = []
+    for t in tools:
+        fn = t.get("function") if isinstance(t, dict) else None
+        if not fn or not isinstance(fn.get("name"), str):
+            continue
+        params = fn.get("parameters")
+        if not isinstance(params, dict) or params.get("type") != "object":
+            params = {"type": "object", "properties": {}, "additionalProperties": True}
+        # 保证 arguments 一定是对象
+        params = {"type": "object", "additionalProperties": True, **params}
+        options.append({
+            "type": "object",
+            "properties": {"name": {"const": fn["name"]}, "arguments": params},
+            "required": ["name", "arguments"],
+        })
+    if not options:
+        return None
+    schema = {"oneOf": options}
+    return {"type": "json_schema", "json_schema": {"name": "tool_call", "strict": True, "schema": schema}}
+
+
 def looks_degenerate(content):
     """判断是否陷入退化循环(大量重复占位词 / 过长未收尾)。"""
     if not content or not isinstance(content, str) or len(content.strip()) < 40:
@@ -199,11 +228,15 @@ class Handler(BaseHTTPRequestHandler):
             gathered = self._gather_stream(upstream)
             self._write_json(200, gathered, False)
 
-    # ---------- 工具调用: 流式读 + 提前止损 + 改写 ----------
+    # ---------- 工具调用: json_schema 强制合法输出 + 提前止损 + 改写 ----------
     def _stream_tools(self, body, client_stream):
         upstream = dict(body)
         upstream["stream"] = True
         upstream["tools"] = trim_tools(body["tools"], self.MAX_TOOLS)
+        # 关键: 用 json_schema 强制模型只输出合法的 {name,arguments}, 彻底杜绝退化/乱格式
+        rf = build_tool_schema(upstream["tools"])
+        if rf:
+            upstream["response_format"] = rf
         upstream.setdefault("repeat_penalty", self.REPEAT_PENALTY)
         upstream.setdefault("min_p", 0.05)
         if isinstance(upstream.get("temperature"), (int, float)) and upstream["temperature"] > 0.9:
